@@ -1,4 +1,4 @@
-bag_path: '/home/armasuisse-pq/2023-12-05-13-24-07.bag'
+bag_path: '/home/wbl/下载/01_urban_night_H_raw_no_img.bag'
 imu_topic: '/imu/data_raw'
 radar_topic: '/radar/cfar_detections'
 odometry_topic: '/rio/odometry_optimizer'

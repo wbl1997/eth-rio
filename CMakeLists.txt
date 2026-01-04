@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.5)
 project(rio)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -19,18 +19,25 @@ find_package(catkin REQUIRED COMPONENTS
                 gtsam_catkin
                 std_srvs
             )
-find_package(Eigen3 REQUIRED)
+# 强制使用系统 Eigen 3.3.7 而不是 /usr/local 中的 Eigen 3.4.0
+set(CMAKE_IGNORE_PATH "/usr/local")
+set(Eigen3_DIR "/usr/lib/cmake/eigen3")
+find_package(Eigen3 3.3 REQUIRED)
 find_package(GTSAM REQUIRED)
 find_package(GTSAM_UNSTABLE REQUIRED)
 
-add_message_files()
+add_message_files(
+  FILES
+  DopplerResidual.msg
+  Timing.msg
+)
 generate_messages(DEPENDENCIES std_msgs)
 
 catkin_package( INCLUDE_DIRS include ${catkin_INCLUDE_DIRS}
                 LIBRARIES ${PROJECT_NAME} ${PROJECT_NAME}_nodelet
                 CATKIN_DEPENDS message_runtime roscpp lpp sensor_msgs std_msgs roslib tf2_eigen tf2_ros nodelet gtsam_catkin std_srvs
               )
-include_directories(include ${catkin_INCLUDE_DIRS})
+include_directories(include ${catkin_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
 
 ###########
 ## Build ##
@@ -46,6 +53,7 @@ add_library(${PROJECT_NAME}
         src/common.cpp
         src/rio.cpp
         )
+add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} gtsam gtsam_unstable Eigen3::Eigen)
 
 add_library(${PROJECT_NAME}_nodelet

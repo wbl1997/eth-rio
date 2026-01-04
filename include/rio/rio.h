@@ -107,5 +107,9 @@ class Rio {
   bool baro_active_{false};
   std::optional<double> baro_height_bias_;
   std::deque<std::pair<double, double>> baro_height_bias_history_;
+
+  // Radar message buffer to store radar measurements until IMU catches up
+  std::deque<sensor_msgs::PointCloud2Ptr> radar_msg_buffer_;
+  void processRadarMeasurement(const sensor_msgs::PointCloud2Ptr& msg);
 };
 }  // namespace rio

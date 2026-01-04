@@ -198,6 +198,7 @@ void Rio::imuRawCallback(const sensor_msgs::ImuConstPtr& msg) {
   odom_navigation_pub_.publish(new_odometry);
 
   if (new_result) {
+    std::cout<<"Publishing optimized odometry."<<std::endl;
     odom_optimizer_pub_.publish(new_odometry);
 
     tf_broadcaster_.sendTransform(
@@ -216,6 +217,23 @@ void Rio::imuRawCallback(const sensor_msgs::ImuConstPtr& msg) {
                bias_gyro.vector);
     bias_gyro.header = propagation_.back().getLatestState()->imu->header;
     gyro_bias_pub_.publish(bias_gyro);
+  }
+
+  // Process buffered radar messages if IMU has caught up
+  const auto current_imu_stamp = propagation_.back().getLatestState()->imu->header.stamp;
+  while (!radar_msg_buffer_.empty()) {
+    const auto& buffered_radar_msg = radar_msg_buffer_.front();
+    // Check if IMU time has caught up to or passed the radar time
+    if (current_imu_stamp >= buffered_radar_msg->header.stamp) {
+      // LOG(I, "Processing buffered radar measurement at time " 
+      //          << buffered_radar_msg->header.stamp 
+      //          << " with current IMU time " << current_imu_stamp);
+      processRadarMeasurement(buffered_radar_msg);
+      radar_msg_buffer_.pop_front();
+    } else {
+      // IMU hasn't caught up yet, keep remaining messages in buffer
+      break;
+    }
   }
 }
 
@@ -243,6 +261,27 @@ void Rio::cfarDetectionsCallback(const sensor_msgs::PointCloud2Ptr& msg) {
     return;
   }
 
+  const auto last_imu_stamp = propagation_.back().getLatestState()->imu->header.stamp;
+  
+  // Check if IMU has caught up to radar time
+  if (last_imu_stamp < msg->header.stamp) {
+    // IMU hasn't caught up yet, buffer the radar message
+    // LOG(I, "Buffering radar measurement at time " << msg->header.stamp 
+    //          << " (waiting for IMU to catch up, current IMU time: " << last_imu_stamp << ")");
+    radar_msg_buffer_.push_back(msg);
+    return;
+  }
+
+  // IMU has caught up, process the radar measurement immediately
+  processRadarMeasurement(msg);
+}
+
+void Rio::processRadarMeasurement(const sensor_msgs::PointCloud2Ptr& msg) {
+  if (propagation_.empty()) {
+    LOG(W, "No propagation, cannot process radar measurement.");
+    return;
+  }
+
   Pose3 B_T_BR;
   try {
     auto R_T_RB_tf = tf_buffer_.lookupTransform(
@@ -260,7 +299,16 @@ void Rio::cfarDetectionsCallback(const sensor_msgs::PointCloud2Ptr& msg) {
     return;
   }
 
-  auto split_it = splitPropagation(msg->header.stamp);
+  const auto last_imu_stamp = propagation_.back().getLatestState()->imu->header.stamp;
+  const double dt = (msg->header.stamp - last_imu_stamp).toSec();
+  const double eps = 0.05; // 50ms
+
+  ros::Time split_t = msg->header.stamp;
+  if (dt > 0.0 && dt < eps) {
+    split_t = last_imu_stamp - ros::Duration(0.00001);  // clamp
+  }
+
+  auto split_it = splitPropagation(split_t);
   if (split_it == propagation_.end()) {
     LOG(W, "Failed to split propagation, skipping CFAR detections.");
     LOG(W, "Split time: " << msg->header.stamp);

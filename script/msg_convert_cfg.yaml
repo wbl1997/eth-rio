@@ -1,0 +1,40 @@
+out_frame_id: 'awr1843aop'
+
+profiles:
+  coloradar:
+    force_frame_id: awr1843aop
+    force_imu_frame_id: bmi088
+    
+    tgt_fields:
+      - {name: x, datatype: float32}
+      - {name: y, datatype: float32}
+      - {name: z, datatype: float32}
+      - {name: doppler, datatype: float32}
+      - {name: snr, datatype: int16}
+      - {name: noise, datatype: int16} 
+      
+    map:
+      x:         {from: x}
+      y:         {from: y}
+      z:         {from: z}
+      doppler:   {from: doppler}
+      snr:       {from: intensity}
+      noise:     {default: 0}
+
+  snail_radar:
+    tgt_fields:
+      - {name: x, datatype: float32}
+      - {name: y, datatype: float32}
+      - {name: z, datatype: float32}
+      - {name: doppler, datatype: float32}
+      - {name: snr, datatype: int16}
+      - {name: noise, datatype: int16} 
+      
+    map:
+      x:         {from: x}
+      y:         {from: y}
+      z:         {from: z}
+      doppler:   {from: doppler}
+      snr:       {from: intensity}
+      noise:     {default: 0}
+
