@@ -1,4 +1,4 @@
-wspath="/home/wbl/code/biye_data_process/code/eth_rio_ws/"
+wspath="/home/lucas/jjl/eth_rio_wbl"
 
 gnome-terminal -x bash -c "roscore" & sleep 3
 
@@ -23,7 +23,7 @@ rosrun topic_tools relay /imu/data /imu/data_raw
 " & sleep 2
 
 gnome-terminal -x bash -c "
-rosbag play /media/wbl/KESU/data/coloradar/rosbags/edgar_classroom_run0.bag  -s 0 -r 1 
+rosbag play /home/lucas/jjl/data/datasets/coloradar/aspen_run9.bag  -s 0 -r 1 
 " &
 
 

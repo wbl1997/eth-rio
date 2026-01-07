@@ -1,0 +1,46 @@
+<launch>
+    <arg name="nodelet_manager_on" default="true" />
+    <arg name="nodelet_manager_name" default="rio_nodelet_manager" />
+
+    <arg name="rio_queue_size" default="1" />
+    <arg name="rio_odom_frame_id" default="odom" />
+
+    <!-- MSC 数据集 frame -->
+    <arg name="radar_frame_id" default="oculii1" />
+    <arg name="imu_frame_id" default="imu_link" />
+    <arg name="cam_frame_id" default="cam" />
+
+    <arg name="visualize" default="true"/>
+
+    <node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager_name)" args="manager"
+          cwd="node" output="screen" if="$(arg nodelet_manager_on)"/>
+
+    <node pkg="nodelet" type="nodelet" name="rio"
+          args="load rio::RioNodelet $(arg nodelet_manager_name)" output="screen">
+        <rosparam file="$(find rio)/cfg/rio_msc.yaml" />
+        <param name="queue_size" value="$(arg rio_queue_size)"/>
+        <param name="odom_frame_id" value="$(arg rio_odom_frame_id)"/>
+    </node>
+
+    <!--
+      IMU -> Radar 外参（来自你给的 radar_e7_MSC.yaml 截图：extrinsic_T / extrinsic_R）
+      说明：不同工程里 extrinsic 的方向可能是 IMU->Radar 或 Radar->IMU。
+      我默认启用 “IMU -> Radar”。如果你发现轨迹明显不对/发散，把下面启用/注释两行对调即可。
+    -->
+
+    <!-- 方案A：假定 extrinsic = IMU -> Radar（默认启用） -->
+    <!-- <node name="imu_to_radar_broadcaster" pkg="tf2_ros" type="static_transform_publisher"
+          args="1.406989805 -0.018533357 -0.935477726 -0.000000475 0.002338113 0.006988440 0.999972850 '$(arg imu_frame_id)' '$(arg radar_frame_id)'" /> -->
+
+    <!-- 方案B：假定 extrinsic = Radar -> IMU（即A的逆，备用） -->
+    
+    <node name="imu_to_radar_broadcaster" pkg="tf2_ros" type="static_transform_publisher"
+          args="-1.41095236 0.03822599 0.92888893 0.000000475 -0.002338113 -0.006988440 0.999972850 '$(arg imu_frame_id)' '$(arg radar_frame_id)'" />
+   
+
+    <group if="$(arg visualize)">
+        <node pkg="rviz" type="rviz" name="rviz" args="-d $(find rio)/cfg/rviz.rviz"/>
+        <node pkg="rqt_multiplot" type="rqt_multiplot" name="rqt_multiplot"
+              args="--multiplot-config $(find rio)/cfg/rio_multiplot.xml --multiplot-run-all"/>
+    </group>
+</launch>

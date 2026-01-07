@@ -1,0 +1,18 @@
+profiles:
+  ntu4dradlm:
+    # 输出 PointCloud2 的 frame_id（RIO 用它去查 TF 外参）
+    force_frame_id: base_link
+
+    # sensor_msgs/PointCloud channels 映射
+    doppler_channel: Doppler
+    snr_channel: Power
+
+    # snr 是 INT16：这里用 Power * 100 做缩放（可按需要改成 1 或 10）
+    snr_scale: 100.0
+    snr_bias: 0.0
+
+    # 没有 noise，就填常数
+    noise_default: 0
+
+    # 是否过滤 NaN（Point32 有时会出现）
+    skip_nans: true

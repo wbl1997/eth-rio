@@ -1,40 +1,62 @@
-out_frame_id: 'awr1843aop'
-
 profiles:
   coloradar:
     force_frame_id: awr1843aop
     force_imu_frame_id: bmi088
-    
+
     tgt_fields:
       - {name: x, datatype: float32}
       - {name: y, datatype: float32}
       - {name: z, datatype: float32}
       - {name: doppler, datatype: float32}
       - {name: snr, datatype: int16}
-      - {name: noise, datatype: int16} 
-      
+      - {name: noise, datatype: int16}
+
     map:
-      x:         {from: x}
-      y:         {from: y}
-      z:         {from: z}
-      doppler:   {from: doppler}
-      snr:       {from: intensity}
-      noise:     {default: 0}
+      x:       {from: x}
+      y:       {from: y}
+      z:       {from: z}
+      doppler: {from: doppler}
+      snr:     {from: intensity}
+      noise:   {default: 0}
 
   snail_radar:
+    force_frame_id: ars548
+    force_imu_frame_id: imu_link
+
     tgt_fields:
       - {name: x, datatype: float32}
       - {name: y, datatype: float32}
       - {name: z, datatype: float32}
       - {name: doppler, datatype: float32}
       - {name: snr, datatype: int16}
-      - {name: noise, datatype: int16} 
-      
+      - {name: noise, datatype: int16}
+
     map:
-      x:         {from: x}
-      y:         {from: y}
-      z:         {from: z}
-      doppler:   {from: doppler}
-      snr:       {from: intensity}
-      noise:     {default: 0}
+      x:       {from: x}
+      y:       {from: y}
+      z:       {from: z}
+      doppler: {from: doppler}
+      snr:     {from: intensity}
+      noise:   {default: 0}
+
+  msc:
+    # 输入 /oculii_radar/point_cloud 的 frame_id 就是 "oculii"
+    force_frame_id: oculii1
+    force_imu_frame_id: imu_link
+
+    tgt_fields:
+      - {name: x, datatype: float32}
+      - {name: y, datatype: float32}
+      - {name: z, datatype: float32}
+      - {name: doppler, datatype: float32}
+      - {name: snr, datatype: int16}
+      - {name: noise, datatype: int16}
+
+    map:
+      x:       {from: x}
+      y:       {from: y}
+      z:       {from: z}
+      doppler: {from: doppler}
+      snr:     {from: power, scale: 1.0}
+      noise:   {default: 0}
 
