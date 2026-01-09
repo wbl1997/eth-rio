@@ -118,6 +118,11 @@ bool Propagation::split(const ros::Time& t, uint64_t* split_idx,
     LOG(D, "t is after last IMU measurement, skipping split.");
     return false;
   }
+  
+  // Minimum time interval to avoid ill-conditioned IMU factors (1ms)
+  const double min_imu_dt = 0.001;
+  
+  // Find state_1: first state with timestamp >= t
   auto state_1 =
       std::lower_bound(states_.begin(), states_.end(), t,
                        [](const State::ConstPtr& state, const ros::Time& t) {
@@ -132,49 +137,91 @@ bool Propagation::split(const ros::Time& t, uint64_t* split_idx,
     return false;
   }
   auto state_0 = std::prev(state_1);
+  
+  // Check if split time is too close to adjacent IMU samples
+  const double dt_to_state_0 = (t - (*state_0)->imu->header.stamp).toSec();
+  const double dt_to_state_1 = ((*state_1)->imu->header.stamp - t).toSec();
+  
+  // Disable snapping - just skip splits that are too close to IMU samples
+  // This is more conservative but avoids potential edge cases with snapping
+  if (dt_to_state_0 < min_imu_dt) {
+    LOG(W, "Split time " << t << " too close to previous IMU sample " 
+           << (*state_0)->imu->header.stamp << " (dt=" << dt_to_state_0 
+           << "s < " << min_imu_dt << "s). Skipping split.");
+    return false;
+  }
+  if (dt_to_state_1 < min_imu_dt) {
+    LOG(W, "Split time " << t << " too close to next IMU sample " 
+           << (*state_1)->imu->header.stamp << " (dt=" << dt_to_state_1 
+           << "s < " << min_imu_dt << "s). Skipping split.");
+    return false;
+  }
+  
+  // Check that we have enough states for the split
+  // split_state_it = state_0 means we split between state_0 and state_1
+  auto states_before_split = std::distance(states_.begin(), state_0);
+  auto total_states = static_cast<long>(states_.size());
+  auto states_after_split = std::distance(state_1, states_.end());
+  
+  // Log detailed info for debugging
+  LOG(D, "Split check: states_before=" << states_before_split 
+         << ", states_after=" << states_after_split
+         << ", total_states=" << total_states
+         << ", t=" << t
+         << ", first_state_t=" << states_.front()->imu->header.stamp
+         << ", state_0_t=" << (*state_0)->imu->header.stamp
+         << ", state_1_t=" << (*state_1)->imu->header.stamp
+         << ", last_state_t=" << states_.back()->imu->header.stamp);
+  
+  // We need at least 1 state before split_state_it to form an IMU factor
+  if (states_before_split < 1) {
+    LOG(W, "Not enough states before split point. Skipping split."
+           << " states_before=" << states_before_split 
+           << ", total_states=" << total_states
+           << ", t=" << t 
+           << ", first_state_t=" << states_.front()->imu->header.stamp
+           << ", last_state_t=" << states_.back()->imu->header.stamp);
+    return false;
+  }
+  
+  // propagation_from_t needs at least 1 state after the split point
+  if (states_after_split < 1) {
+    LOG(W, "Not enough states after split point. Skipping split.");
+    return false;
+  }
 
-  // Create ZOH IMU message to propagate to t.
+  // Always interpolate to exact time t
+  // Create ZOH IMU message to propagate to t
   sensor_msgs::Imu imu;
   imu.header.stamp = t;
   imu.header.frame_id = (*state_1)->imu->header.frame_id;
   imu.linear_acceleration = (*state_1)->imu->linear_acceleration;
   imu.angular_velocity = (*state_1)->imu->angular_velocity;
 
+  // propagation_to_t contains states from begin to state_1 (exclusive), plus interpolated state
   *propagation_to_t =
       Propagation(std::vector<State::ConstPtr>(states_.begin(), state_1),
                   first_state_idx_, (*split_idx));
-  if (t > (*state_0)->imu->header.stamp)
-    propagation_to_t->addImuMeasurement(imu);
-  else
-    LOG(W, "Split before or exactly at measurement time. t_split: "
-               << t << " t_0: " << (*state_0)->imu->header.stamp);
+  propagation_to_t->addImuMeasurement(imu);
 
-  // Regenerate propagation from t.
-  if (t < (*state_1)->imu->header.stamp) {
-    State initial_state = {
-        propagation_to_t->getLatestState()->odom_frame_id,
-        propagation_to_t->getLatestState()->I_p_IB,
-        propagation_to_t->getLatestState()->R_IB,
-        propagation_to_t->getLatestState()->I_v_IB,
-        propagation_to_t->getLatestState()->imu,
-        propagation_to_t->getLatestState()->integrator,
-        propagation_to_t->getLatestState()->baro_height_bias};
-    initial_state.integrator.resetIntegrationAndSetBias(
-        propagation_to_t->getLatestState()->integrator.biasHat());
-    *propagation_from_t =
-        Propagation(initial_state, (*split_idx), last_state_idx_);
-    for (auto it = state_1; it != states_.end(); ++it) {
-      propagation_from_t->addImuMeasurement((*it)->imu);
-    }
-  } else {
-    *propagation_from_t =
-        Propagation(std::vector<State::ConstPtr>(state_1, states_.end()),
-                    (*split_idx), last_state_idx_);
-    LOG(W, "Split after or exactly at measurement time. t_split: "
-               << t << " t_1: " << (*state_1)->imu->header.stamp);
+  // Regenerate propagation from t
+  State initial_state = {
+      propagation_to_t->getLatestState()->odom_frame_id,
+      propagation_to_t->getLatestState()->I_p_IB,
+      propagation_to_t->getLatestState()->R_IB,
+      propagation_to_t->getLatestState()->I_v_IB,
+      propagation_to_t->getLatestState()->imu,
+      propagation_to_t->getLatestState()->integrator,
+      propagation_to_t->getLatestState()->baro_height_bias};
+  initial_state.integrator.resetIntegrationAndSetBias(
+      propagation_to_t->getLatestState()->integrator.biasHat());
+  *propagation_from_t =
+      Propagation(initial_state, (*split_idx), last_state_idx_);
+  for (auto it = state_1; it != states_.end(); ++it) {
+    propagation_from_t->addImuMeasurement((*it)->imu);
   }
+  
   (*split_idx)++;
-
   return true;
 }
 

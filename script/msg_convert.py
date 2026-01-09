@@ -139,6 +139,10 @@ def pc2_remap(msg: PointCloud2, cfg: dict, debug: bool = False) -> PointCloud2:
     rmin = float(rflt.get("min", 0.0)) if rflt else None
     rmax = float(rflt.get("max", 1e30)) if rflt else None
 
+    ds_step = int(cfg.get("downsample_step", 1))
+    if ds_step < 1:
+        ds_step = 1
+
     tgt_fields_spec = cfg["tgt_fields"]
     tgt_fields = build_tgt_fields(tgt_fields_spec)
     tgt_names = [f.name for f in tgt_fields]
@@ -191,7 +195,10 @@ def pc2_remap(msg: PointCloud2, cfg: dict, debug: bool = False) -> PointCloud2:
         nonlocal printed
 
         # 注意：这里 field_names 传 in_names（真实顺序），确保 tuple index 可用
-        for p in pc2.read_points(msg, field_names=in_names, skip_nans=skip_nans):
+        for i, p in enumerate(pc2.read_points(msg, field_names=in_names, skip_nans=skip_nans)):
+            if i % ds_step != 0:
+                continue
+
             # 按 name->idx 取值，构造 d（不会再错配）
             d = {need_src[i]: p[need_idx[i]] for i in range(len(need_src))}
             # print(d)
@@ -283,6 +290,7 @@ def parse_args(argv):
     ap.add_argument("--pc2-out", default="/points_out", help="Output PointCloud2 topic.")
     ap.add_argument("--imu-in", default="/imu_raw", help="Input IMU topic.")
     ap.add_argument("--imu-out", default="/imu_out", help="Output IMU topic.")
+    ap.add_argument("--downsample-step", type=int, default=1, help="Downsample step (keep 1 point every N).")
     ap.add_argument("--node-name", default="pc2_imu_field_remap_args", help="ROS node name.")
     ap.add_argument("--debug", action="store_true", help="Print a few points and mappings for debug.")
     return ap.parse_args(argv)
@@ -300,6 +308,10 @@ def main():
 
     profile_cfg = copy.deepcopy(profiles[args.profile])
     validate_profile_cfg(args.profile, profile_cfg)
+
+    # 命令行参数覆盖配置文件
+    if args.downsample_step > 1:
+        profile_cfg["downsample_step"] = args.downsample_step
 
     # 你原来强制 frame_id 的行为搬到配置里（可选）
     # profile_cfg["force_frame_id"] = "awr1843aop"

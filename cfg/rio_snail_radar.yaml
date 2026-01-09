@@ -9,9 +9,9 @@ prior_noise:
 
 noise:
     radar:
-        doppler: 0.1 # sigma
-        track: [0.1, 0.1, 0.1] # BearingRange3D TODO(rikba): determine order, probably azimuth, elevation, range 
-        loss: 5 # 0: quadratic, 1: fair, 2: huber, 3: cauchy, 4: geman-mcclure, 5: welsch, 6: tukey
+        doppler: 0.05 # sigma
+        track: [0.01, 0.01, 0.01] # BearingRange3D TODO(rikba): determine order, probably azimuth, elevation, range 
+        loss: 2 # 0: quadratic, 1: fair, 2: huber, 3: cauchy, 4: geman-mcclure, 5: welsch, 6: tukey
     baro:
         height: 0.2 # RMS/sqrt(dt) (BMP390 0.11m sigma, dt=0.02)
         loss: 1 # 0: quadratic, 1: fair, 2: huber, 3: cauchy, 4: geman-mcclure, 5: welsch, 6: tukey

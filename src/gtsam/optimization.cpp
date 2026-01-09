@@ -99,6 +99,20 @@ void Optimization::addFactor<CombinedImuFactor>(
     LOG(D, "Propagation has no last state index, skipping adding IMU factor.");
     return;
   }
+  
+  // Check preintegration time to avoid ill-conditioned covariance
+  const double preint_dt = second_state->integrator.deltaTij();
+  const double min_preint_dt = 0.001;  // 1ms minimum
+  if (preint_dt < min_preint_dt) {
+    // This is a critical error - if we skip this IMU factor, the new state will be unconstrained!
+    // Instead of skipping, we should throw an exception or handle this upstream
+    LOG(E, "CRITICAL: Preintegration time too short: " << preint_dt 
+           << "s < " << min_preint_dt << "s (idx " << first_idx 
+           << " -> " << second_idx.value() << "). This will cause IndeterminantLinearSystemException!");
+    // Still add the factor - better to have a noisy estimate than an unconstrained variable
+    // The smoother may still fail, but at least we tried
+  }
+  
   new_graph_.add(CombinedImuFactor(
       X(first_idx), V(first_idx), X(second_idx.value()), V(second_idx.value()),
       B(first_idx), B(second_idx.value()), second_state->integrator));
@@ -228,6 +242,15 @@ void Optimization::addRadarFactor(
     std::vector<Vector1>* doppler_residuals) {
   // TODO(rikba): Remove possible IMU factor between prev_state and next_state.
 
+  // Log the state indices being added
+  LOG(D, "addRadarFactor: propagation_to_radar [" << propagation_to_radar.getFirstStateIdx() 
+         << " -> " << (propagation_to_radar.getLastStateIdx().has_value() ? 
+                       std::to_string(propagation_to_radar.getLastStateIdx().value()) : "open")
+         << "], propagation_from_radar [" << propagation_from_radar.getFirstStateIdx()
+         << " -> " << (propagation_from_radar.getLastStateIdx().has_value() ?
+                       std::to_string(propagation_from_radar.getLastStateIdx().value()) : "open")
+         << "]");
+
   // Add IMU factor from prev_state to split_state.
   addFactor<CombinedImuFactor>(propagation_to_radar);
   // Add IMU factor from split_state to next_state.
@@ -241,8 +264,11 @@ void Optimization::addRadarFactor(
                     doppler_residuals);
 
   // Add all bearing range factors to split_state.
-  addFactor<BearingRangeFactor<Pose3, Point3>>(propagation_to_radar,
-                                               noise_model_radar_track);
+  // TODO(wbl): Temporarily disabled to debug IndeterminantLinearSystemException
+  // The landmark factors may cause issues when landmarks are only observed once
+  // before being marginalized out of the smoother window.
+  // addFactor<BearingRangeFactor<Pose3, Point3>>(propagation_to_radar,
+  //                                              noise_model_radar_track);
 
   // Add initial state at split_state.
   if (propagation_to_radar.getLastStateIdx().has_value()) {
@@ -291,6 +317,10 @@ void Optimization::addBaroFactor(
 }
 
 bool Optimization::solve(const std::deque<Propagation>& propagations) {
+  if (smoother_failed_.load()) {
+    LOG(E, "Smoother has failed previously. Cannot continue optimization. Please restart the node.");
+    return false;
+  }
   if (running_.load()) {
     LOG(D, "Optimization thread still running.");
     return false;
@@ -398,6 +428,8 @@ void Optimization::solveThreaded(
     smoother_.update(graph, values, stamps);
   } catch (const std::exception& e) {
     LOG(E, "Exception in update: " << e.what());
+    // Mark smoother as failed - it cannot recover
+    smoother_failed_.store(true);
     running_.store(false);
     return;
   }

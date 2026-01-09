@@ -66,6 +66,11 @@ class Propagation {
     return last_state_idx_;
   }
 
+  double getDuration() const {
+    if (states_.empty()) return 0.0;
+    return (states_.back()->imu->header.stamp - states_.front()->imu->header.stamp).toSec();
+  }
+
   std::optional<gtsam::Pose3> B_T_BR_;
   std::optional<std::vector<CfarDetection>> cfar_detections_;
   std::optional<std::vector<Track::Ptr>> cfar_tracks_;

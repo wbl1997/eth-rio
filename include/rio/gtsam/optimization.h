@@ -102,6 +102,7 @@ class Optimization {
   std::deque<Propagation> propagations_;
 
   std::atomic<bool> running_{false};
+  std::atomic<bool> smoother_failed_{false};
   std::thread thread_;
   std::mutex mutex_;
 

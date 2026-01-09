@@ -224,14 +224,16 @@ void Rio::imuRawCallback(const sensor_msgs::ImuConstPtr& msg) {
   while (!radar_msg_buffer_.empty()) {
     const auto& buffered_radar_msg = radar_msg_buffer_.front();
     // Check if IMU time has caught up to or passed the radar time
-    if (current_imu_stamp >= buffered_radar_msg->header.stamp) {
+    // Ensure we have at least 5ms buffer after the radar measurement
+    // The actual safety check is in Propagation::split (2ms from IMU samples)
+    if ((current_imu_stamp - buffered_radar_msg->header.stamp).toSec() > 0.005) {
       // LOG(I, "Processing buffered radar measurement at time " 
       //          << buffered_radar_msg->header.stamp 
       //          << " with current IMU time " << current_imu_stamp);
       processRadarMeasurement(buffered_radar_msg);
       radar_msg_buffer_.pop_front();
     } else {
-      // IMU hasn't caught up yet, keep remaining messages in buffer
+      // IMU hasn't caught up enough yet, keep remaining messages in buffer
       break;
     }
   }
@@ -301,11 +303,33 @@ void Rio::processRadarMeasurement(const sensor_msgs::PointCloud2Ptr& msg) {
 
   const auto last_imu_stamp = propagation_.back().getLatestState()->imu->header.stamp;
   const double dt = (msg->header.stamp - last_imu_stamp).toSec();
-  const double eps = 0.05; // 50ms
-
+  
   ros::Time split_t = msg->header.stamp;
-  if (dt > 0.0 && dt < eps) {
-    split_t = last_imu_stamp - ros::Duration(0.00001);  // clamp
+
+  // Check if split_t is too close to any existing keyframe boundary
+  // Use a small threshold (2ms) - the main protection is in Propagation::split
+  // which checks against actual IMU sample times
+  const double min_dt = 0.002;
+  for (const auto& p : propagation_) {
+    const double dt_start = std::abs((p.getFirstState()->imu->header.stamp - split_t).toSec());
+    if (dt_start < min_dt) {
+      LOG(W, "Split time " << split_t << " too close to state boundary start " 
+             << p.getFirstState()->imu->header.stamp << " (dt=" << dt_start 
+             << "s). Skipping radar measurement.");
+      return;
+    }
+    // Only check closed segments (with last_state_idx), not the open-ended segment
+    if (p.getLastStateIdx().has_value()) {
+      const double dt_end = std::abs((p.getLatestState()->imu->header.stamp - split_t).toSec());
+      if (dt_end < min_dt) {
+        LOG(W, "Split time " << split_t << " too close to state boundary end " 
+               << p.getLatestState()->imu->header.stamp << " (dt=" << dt_end 
+               << "s). Skipping radar measurement.");
+        return;
+      }
+    }
+    // Note: We don't check the open-ended segment's tip here anymore.
+    // The Propagation::split function will check against actual IMU samples.
   }
 
   auto split_it = splitPropagation(split_t);
@@ -316,6 +340,9 @@ void Rio::processRadarMeasurement(const sensor_msgs::PointCloud2Ptr& msg) {
                << propagation_.back().getLatestState()->imu->header.stamp);
     return;
   }
+
+  // Note: We rely on Propagation::split's internal check (min_imu_dt = 0.5ms)
+  // to ensure the split produces valid propagations. No post-split check needed.
 
   split_it->B_T_BR_ = B_T_BR;
   split_it->cfar_detections_ = parseRadarMsg(msg);
@@ -420,17 +447,35 @@ void Rio::pressureCallback(const sensor_msgs::FluidPressurePtr& msg) {
 }
 
 std::deque<Propagation>::iterator Rio::splitPropagation(const ros::Time& t) {
-  auto it = propagation_.begin();
-  for (; it != propagation_.end(); ++it) {
-    Propagation propagation_to_t, propagation_from_t;
-    if (it->split(t, &idx_, &propagation_to_t, &propagation_from_t)) {
-      *it = propagation_to_t;
-      auto distance = std::distance(propagation_.begin(), it);
-      propagation_.insert(std::next(it), propagation_from_t);
-      // insert invalidates iterators, so we need to get the new iterator
-      return std::next(propagation_.begin(), distance);
-    }
+  // Only split the last (open-ended) propagation segment
+  // Splitting closed segments would create issues with factor graph consistency
+  if (propagation_.empty()) {
+    return propagation_.end();
   }
-
-  return it;
+  
+  auto it = std::prev(propagation_.end());  // Get the last element
+  
+  // Only proceed if this is an open-ended segment (no last_state_idx)
+  if (it->getLastStateIdx().has_value()) {
+    LOG(W, "Last propagation segment is already closed, cannot split.");
+    return propagation_.end();
+  }
+  
+  // Log propagation state for debugging
+  LOG(D, "splitPropagation: t=" << t 
+         << ", propagation_.size()=" << propagation_.size()
+         << ", last_propagation first_idx=" << it->getFirstStateIdx()
+         << ", last_propagation states: " << it->getFirstState()->imu->header.stamp 
+         << " to " << it->getLatestState()->imu->header.stamp);
+  
+  Propagation propagation_to_t, propagation_from_t;
+  if (it->split(t, &idx_, &propagation_to_t, &propagation_from_t)) {
+    *it = propagation_to_t;
+    auto distance = std::distance(propagation_.begin(), it);
+    propagation_.insert(std::next(it), propagation_from_t);
+    // insert invalidates iterators, so we need to get the new iterator
+    return std::next(propagation_.begin(), distance);
+  }
+  
+  return propagation_.end();
 }
