@@ -1,0 +1,8 @@
+prefix=/home/lucas/jjl/code/ETH_WBL/eth-rio/devel/.private/catkin_tools_prebuild
+
+Name: catkin_tools_prebuild
+Description: Description of catkin_tools_prebuild
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

@@ -1,0 +1,1 @@
+/home/lucas/jjl/code/ETH_WBL/eth-rio/devel/.private/catkin_tools_prebuild/setup.fish
