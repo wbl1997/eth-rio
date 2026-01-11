@@ -60,3 +60,22 @@ profiles:
       snr:     {from: power, scale: 1.0}
       noise:   {default: 0}
 
+  ntu:
+    force_frame_id: ntu_radar
+    force_imu_frame_id: imu_frame
+
+    tgt_fields:
+      - {name: x, datatype: float32}
+      - {name: y, datatype: float32}
+      - {name: z, datatype: float32}
+      - {name: doppler, datatype: float32}
+      - {name: snr, datatype: int16}
+      - {name: noise, datatype: int16}
+
+    map:
+      x:       {from: x}
+      y:       {from: y}
+      z:       {from: z}
+      doppler: {from: doppler}
+      snr:     {from: intensity}
+      noise:   {default: 0}

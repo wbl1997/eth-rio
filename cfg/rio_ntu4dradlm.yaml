@@ -10,9 +10,9 @@ prior_noise:
 
 noise:
   radar:
-    doppler: 0.1
+    doppler: 0.05
     track: [0.1, 0.1, 0.1]
-    loss: 5
+    loss: 2
   baro:
     height: 0.2
     loss: 1

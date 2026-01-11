@@ -1,0 +1,6 @@
+devel_space: /home/lucas/jjl/code/ETH_WBL/eth-rio/devel
+install: false
+install_space: /home/lucas/jjl/code/ETH_WBL/eth-rio/install
+profile: default
+source_space: /home/lucas/jjl/code/ETH_WBL/eth-rio/src
+workspace: /home/lucas/jjl/code/ETH_WBL/eth-rio
